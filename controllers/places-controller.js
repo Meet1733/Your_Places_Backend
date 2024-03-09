@@ -9,6 +9,10 @@ const getCoordsForAddress = require('../util/location');
 const Place = require('../models/place');
 const User = require('../models/user');
 
+const admin = require('../firebase');
+const { getStorage, ref, getDownloadURL } = require("firebase/storage");
+const bucket = admin.storage().bucket();
+
 async function getPlaceById(req, res, next) {
     const placeId = req.params.pid; //{pid: 'p1'}
 
@@ -70,13 +74,32 @@ async function createPlace(req, res, next) {
         return next(error);
     }
 
+    async function uploadFileToFirebaseStorage(localFilePath, destinationPath) {
+        try {
+            await bucket.upload(localFilePath, { destination: destinationPath });
+            const downloadURL = await getDownloadURL(ref(getStorage(), destinationPath));
+            return downloadURL
+        } catch (err) {
+            const error = new HttpError(
+                'Error uploading file to firebase storage, please try again',
+                500
+            );
+            return next(error);
+        }
+    }
+
+    const fileName = req.file.filename;
+    const localFilePath = './uploads/images/' + fileName;
+    const destinationPath = 'places/' + fileName;
+    const placeImageURL = await uploadFileToFirebaseStorage(localFilePath, destinationPath);
+
 
     const createdPlace = new Place({
         title,
         description,
         address,
         location: coordinates,
-        image: req.file.path,
+        image: placeImageURL,
         creator: req.userData.userId
     });
 
