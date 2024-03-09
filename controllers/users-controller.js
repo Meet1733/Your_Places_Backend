@@ -7,6 +7,10 @@ const jwt = require('jsonwebtoken');
 const HttpError = require('../models/http-error');
 const User = require('../models/user');
 
+const admin = require('../firebase');
+const { getStorage, ref, getDownloadURL } = require("firebase/storage");
+const bucket = admin.storage().bucket();
+
 async function getUsers(req, res, next) {
 
     let users;
@@ -45,6 +49,7 @@ async function signup(req, res, next) {
         return next(error);
     }
 
+
     if (existingUser) {
         const error = new HttpError(
             'User exists already, please login instead', 422
@@ -63,10 +68,29 @@ async function signup(req, res, next) {
         return next(error);
     }
 
+    async function uploadFileToFirebaseStorage(localFilePath, destinationPath) {
+        try {
+            await bucket.upload(localFilePath, { destination: destinationPath });
+            const downloadURL = await getDownloadURL(ref(getStorage(), destinationPath));
+            return downloadURL
+        } catch (err) {
+            const error = new HttpError(
+                'Error uploading file to firebase storage, please try again',
+                500
+            );
+            return next(error);
+        }
+    }
+
+    const fileName = req.file.filename;
+    const localFilePath = './uploads/images/' + fileName;
+    const destinationPath = 'users/' + fileName;
+    const userImageURL = await uploadFileToFirebaseStorage(localFilePath, destinationPath);
+
     const createdUser = new User({
         name,  //name: name
         email,
-        image: req.file.path,
+        image: userImageURL,
         password: hashedPassword,
         places: []
     })
